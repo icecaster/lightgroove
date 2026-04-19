@@ -111,6 +111,39 @@ class MidiManager:
         with self._lock:
             return list(self._config["mappings"])
 
+    def get_paired_devices(self) -> dict:
+        import mido
+        try:
+            available_inputs = set(mido.get_input_names())
+            available_outputs = set(mido.get_output_names())
+        except Exception:
+            available_inputs, available_outputs = set(), set()
+        with self._lock:
+            return {
+                "inputs": [
+                    {"name": n, "connected": n in available_inputs}
+                    for n in self._config["active_inputs"]
+                ],
+                "outputs": [
+                    {"name": n, "connected": n in available_outputs}
+                    for n in self._config["active_outputs"]
+                ],
+            }
+
+    def delete_pairing(self, name: str, direction: str):
+        """Deactivate a device and clear all learned mappings."""
+        with self._lock:
+            if direction == "input":
+                if name in self._config["active_inputs"]:
+                    self._config["active_inputs"].remove(name)
+                self._close_input(name)
+            elif direction == "output":
+                if name in self._config["active_outputs"]:
+                    self._config["active_outputs"].remove(name)
+                self._close_output(name)
+            self._config["mappings"] = []
+            self._save_config()
+
     # ------------------------------------------------------------------
     # Port management
     # ------------------------------------------------------------------

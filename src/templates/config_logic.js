@@ -373,6 +373,68 @@ window.addDiscoveredNode = function(node) {
   document.getElementById('node-modal').style.display = 'flex';
 };
 
+// MIDI Paired Devices
+async function loadPairedDevices() {
+  try {
+    const res = await fetch(`${apiBase}/api/midi/paired`);
+    const data = await res.json();
+    renderPairedDevices(data);
+  } catch (e) {
+    console.error('Failed to load paired MIDI devices:', e);
+  }
+}
+
+function renderPairedDevices(data) {
+  const list = document.getElementById('midi-paired-list');
+  if (!list) return;
+  const all = [
+    ...data.inputs.map(d => ({ ...d, direction: 'input' })),
+    ...data.outputs.map(d => ({ ...d, direction: 'output' })),
+  ];
+  if (all.length === 0) {
+    list.innerHTML = '<div style="font-size: 12px; color: #6b7280;">No paired devices.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  all.forEach(({ name, connected, direction }) => {
+    const dir = direction === 'input' ? 'IN' : 'OUT';
+    const row = document.createElement('div');
+    row.style.cssText = 'border: 1px solid #374151; padding: 10px; margin-bottom: 8px; border-radius: 8px; background: #111827; display: flex; align-items: center; justify-content: space-between; gap: 8px;';
+    row.innerHTML = `
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
+        <div style="margin-top: 4px; display: flex; gap: 6px; align-items: center;">
+          <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: ${dir === 'IN' ? '#1e3a5f' : '#3b1f5e'}; color: ${dir === 'IN' ? '#93c5fd' : '#c4b5fd'};">${dir}</span>
+          <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: ${connected ? '#065f46' : '#374151'}; color: ${connected ? '#6ee7b7' : '#9ca3af'};">${connected ? 'Connected' : 'Not connected'}</span>
+        </div>
+      </div>
+      <button class="secondary" style="padding: 4px 10px; font-size: 12px; background: #7f1d1d; border-color: #991b1b; color: #fca5a5; flex-shrink: 0;"
+        data-paired-name="${name}" data-paired-dir="${direction}">Delete</button>
+    `;
+    row.querySelector('button').addEventListener('click', deletePairing);
+    list.appendChild(row);
+  });
+}
+
+async function deletePairing(e) {
+  const btn = e.currentTarget;
+  const name = btn.dataset.pairedName;
+  const direction = btn.dataset.pairedDir;
+  if (!confirm(`Delete pairing for "${name}"?\n\nThis will disconnect the device and clear all learned MIDI mappings.`)) return;
+  btn.disabled = true;
+  try {
+    await post(`${apiBase}/api/midi/delete_pairing`, { name, direction });
+    showToast(`Pairing deleted and MIDI mappings cleared.`, 'success');
+    loadPairedDevices();
+    // Refresh scan list active state if visible
+    midiActiveConfig = { active_inputs: [], active_outputs: [] };
+    renderMidiDevices();
+  } catch (err) {
+    showToast('Failed to delete pairing: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+}
+
 // MIDI Device Discovery
 let midiActiveConfig = { active_inputs: [], active_outputs: [] };
 let midiDiscoveredDevices = { inputs: [], outputs: [] };
@@ -467,6 +529,7 @@ async function toggleMidiDevice(e) {
     if (res) {
       midiActiveConfig = res;
       renderMidiDevices();
+      loadPairedDevices();
     }
   } catch (e) {
     showToast('MIDI toggle failed: ' + e.message, 'error');
@@ -728,9 +791,13 @@ function initConfigEventListeners() {
         }
         // Always reload colors to pick up manual changes
         loadColorsConfig();
+        loadPairedDevices();
       }
     });
   });
+
+  // Load paired devices on initial page load
+  loadPairedDevices();
 }
 
 // Initialize on page load

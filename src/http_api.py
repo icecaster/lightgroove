@@ -205,6 +205,11 @@ class HttpApiServer:
                     self.wfile.write(json.dumps(midi_mgr.get_mappings()).encode("utf-8"))
                     return
 
+                if self.path.startswith("/api/midi/paired") and midi_mgr:
+                    self._set_headers()
+                    self.wfile.write(json.dumps(midi_mgr.get_paired_devices()).encode("utf-8"))
+                    return
+
                 if self.path.startswith("/api/config/artnet"):
                     config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'artnet.json')
                     try:
@@ -507,6 +512,18 @@ class HttpApiServer:
                             # No saved states (fixtures not configured or no previous state) - blackout
                             fixture_manager.blackout_all()
                             self.server._flash_saved_states = None
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+                        return
+
+                    if path == "/api/midi/delete_pairing" and midi_mgr:
+                        name = payload.get("name", "")
+                        direction = payload.get("direction", "")
+                        if not name or direction not in ("input", "output"):
+                            self._set_headers(400)
+                            self.wfile.write(json.dumps({"error": "name and direction required"}).encode("utf-8"))
+                            return
+                        midi_mgr.delete_pairing(name, direction)
                         self._set_headers()
                         self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
                         return

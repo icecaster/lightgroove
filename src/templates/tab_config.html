@@ -50,7 +50,15 @@
     <!-- MIDI Devices Section -->
     <div class="card" style="flex: 1; min-width: 400px;">
       <h3>MIDI Devices</h3>
-      <button id="scan-midi-btn" style="margin-bottom: 10px;">Scan MIDI Devices</button>
+
+      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 8px;">Paired Devices</div>
+      <div id="midi-paired-list">
+        <div style="font-size: 12px; color: #6b7280;">No paired devices.</div>
+      </div>
+
+      <div style="border-top: 1px solid #374151; margin: 16px 0;"></div>
+
+      <button id="scan-midi-btn" style="margin-bottom: 10px;">Scan for New Devices</button>
       <div id="midi-status" style="font-size: 12px; color: #9ca3af; margin-bottom: 10px; display: none;"></div>
       <div id="midi-devices-list"></div>
     </div>
