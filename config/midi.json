@@ -41,6 +41,12 @@
       "cc": 44,
       "fixture_id": "moving1",
       "channel_name": "pan_fine"
+    },
+    {
+      "midi_channel": 0,
+      "cc": 42,
+      "fixture_id": "moving1",
+      "channel_name": "pan_tilt_speed"
     }
   ]
 }

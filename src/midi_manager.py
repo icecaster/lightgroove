@@ -14,6 +14,7 @@ class MidiManager:
         self._active_inputs: Dict[str, object] = {}
         self._active_outputs: Dict[str, object] = {}
         self._last_event: Optional[dict] = None
+        self._suppress_feedback: int = 0  # incremented while applying MIDI input
         self.fixture_manager = None   # set by main.py after init
         self.global_handlers: Dict[str, callable] = {}  # set by main.py after init
         self._config = {"active_inputs": [], "active_outputs": [], "mappings": []}
@@ -63,16 +64,22 @@ class MidiManager:
             fm = self.fixture_manager
 
         normalized = msg.value / 127.0
-        for m in mappings:
-            try:
-                if m["fixture_id"] == "_global":
-                    handler = self.global_handlers.get(m["channel_name"])
-                    if handler:
-                        handler(normalized)
-                elif fm:
-                    fm.set_fixture_channel(m["fixture_id"], m["channel_name"], normalized)
-            except Exception:
-                pass
+        with self._lock:
+            self._suppress_feedback += 1
+        try:
+            for m in mappings:
+                try:
+                    if m["fixture_id"] == "_global":
+                        handler = self.global_handlers.get(m["channel_name"])
+                        if handler:
+                            handler(normalized)
+                    elif fm:
+                        fm.set_fixture_channel(m["fixture_id"], m["channel_name"], normalized)
+                except Exception:
+                    pass
+        finally:
+            with self._lock:
+                self._suppress_feedback -= 1
 
     def pop_last_event(self) -> Optional[dict]:
         with self._lock:
@@ -110,6 +117,31 @@ class MidiManager:
     def get_mappings(self) -> list:
         with self._lock:
             return list(self._config["mappings"])
+
+    def send_cc(self, midi_channel: int, cc: int, value_normalized: float):
+        """Send a CC message to all active output ports."""
+        import mido
+        cc_value = max(0, min(127, round(value_normalized * 127)))
+        msg = mido.Message("control_change", channel=midi_channel, control=cc, value=cc_value)
+        with self._lock:
+            ports = list(self._active_outputs.values())
+        for port in ports:
+            try:
+                port.send(msg)
+            except Exception:
+                pass
+
+    def notify_channel_changed(self, fixture_id: str, channel_name: str, value: float):
+        """Called by FixtureManager when a channel changes; echoes to mapped output ports."""
+        with self._lock:
+            if self._suppress_feedback > 0:
+                return
+            mappings = [
+                m for m in self._config["mappings"]
+                if m["fixture_id"] == fixture_id and m["channel_name"] == channel_name
+            ]
+        for m in mappings:
+            self.send_cc(m["midi_channel"], m["cc"], value)
 
     def get_paired_devices(self) -> dict:
         import mido

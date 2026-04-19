@@ -24,7 +24,8 @@ class FixtureManager:
         self.fixtures_config = self._load_json(fixtures_file)
         self.patch_config = self._load_json(patch_file)
         self.fixtures = {}
-        
+        self.on_channel_changed = None  # callback(fixture_id, channel_name, value)
+
         self._initialize_fixtures()
     
     def _load_json(self, filepath: str) -> Dict:
@@ -100,6 +101,9 @@ class FixtureManager:
         
         # Update state
         fixture['state'][channel_name] = value
+
+        if self.on_channel_changed:
+            self.on_channel_changed(fixture_id, channel_name, value)
     
     def get_fixture_channel(self, fixture_id: str, channel_name: str) -> float:
         """

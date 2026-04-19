@@ -63,6 +63,7 @@ def main():
         # MIDI Manager
         midi_mgr = MidiManager(str(midi_file))
         midi_mgr.fixture_manager = fixture_mgr
+        fixture_mgr.on_channel_changed = midi_mgr.notify_channel_changed
         midi_mgr.global_handlers["grandmaster"] = lambda v: (
             fixture_mgr.dmx.set_grandmaster(v),
             fixture_mgr.reapply_all_states(),
