@@ -78,6 +78,19 @@
     @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(400px); opacity: 0; } }
     .toast.removing { animation: slideOut 0.3s ease-out forwards; }
+    .slider-col.midi-target {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px #f59e0b66;
+      background: rgba(245, 158, 11, 0.08);
+    }
+    #midi-learn-btn.midi-learn-active {
+      background: #92400e;
+      border-color: #b45309;
+      color: #fcd34d;
+      box-shadow: 0 0 0 2px #f59e0b44;
+      animation: midi-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes midi-pulse { 0%, 100% { box-shadow: 0 0 0 2px #f59e0b44; } 50% { box-shadow: 0 0 0 5px #f59e0b22; } }
   </style>
 </head>
 <body>
@@ -266,6 +279,68 @@
       const data = await res.json();
       renderFixtures(data.fixtures || []);
     }
+
+    // MIDI learning mode
+    let midiLearning = false;
+    let midiLearningTarget = null;  // { fixtureId, channelName, label }
+    let midiLearnPollId = null;
+
+    function setMidiLearning(active) {
+      midiLearning = active;
+      document.querySelectorAll('.midi-learn-btn').forEach(b => {
+        b.classList.toggle('midi-learn-active', active);
+        b.textContent = active ? 'MIDI LEARNING' : 'MIDI';
+      });
+      if (!active) clearMidiLearnTarget();
+    }
+
+    function clearMidiLearnTarget() {
+      if (midiLearnPollId) { clearInterval(midiLearnPollId); midiLearnPollId = null; }
+      document.querySelectorAll('.slider-col.midi-target').forEach(el => el.classList.remove('midi-target'));
+      midiLearningTarget = null;
+    }
+
+    function selectMidiLearnTarget(col) {
+      clearMidiLearnTarget();
+      midiLearningTarget = {
+        fixtureId: col.dataset.fixtureId,
+        channelName: col.dataset.channelName,
+      };
+      col.classList.add('midi-target');
+      // Discard any stale event sitting in the buffer before we start polling
+      fetch(`${apiBase}/api/midi/last_event`);
+      midiLearnPollId = setInterval(pollMidiLearn, 100);
+    }
+
+    async function pollMidiLearn() {
+      if (!midiLearningTarget) return;
+      try {
+        const res = await fetch(`${apiBase}/api/midi/last_event`);
+        const event = await res.json();
+        if (event && typeof event.cc === 'number') {
+          const { fixtureId, channelName } = midiLearningTarget;
+          clearMidiLearnTarget();
+          await post(`${apiBase}/api/midi/map`, {
+            midi_channel: event.midi_channel,
+            cc: event.cc,
+            fixture_id: fixtureId,
+            channel_name: channelName,
+          });
+          showToast(`Mapped CC${event.cc} ch${event.midi_channel + 1} → ${fixtureId} / ${channelName}`, 'success');
+        }
+      } catch (_) {}
+    }
+
+    // Click-to-select delegation on any slider-col in the page
+    document.addEventListener('click', e => {
+      if (!midiLearning) return;
+      const col = e.target.closest('.slider-col');
+      if (col && col.dataset.fixtureId && col.dataset.channelName) selectMidiLearnTarget(col);
+    });
+
+    document.querySelectorAll('.midi-learn-btn').forEach(btn => {
+      btn.addEventListener('click', () => setMidiLearning(!midiLearning));
+    });
 
     function zeroAllSliders() {
       document.querySelectorAll('.slider-col input[type=range]').forEach(input => {
@@ -650,16 +725,36 @@
     // Live channel value updates
     async function updateLiveValues() {
       try {
-        const data = await getStates();
+        const [statesRes, gmRes, bpmRes] = await Promise.all([
+          getStates(),
+          fetch(`${apiBase}/api/grandmaster`).then(r => r.json()),
+          fetch(`${apiBase}/api/fx/bpm`).then(r => r.json()),
+        ]);
+
         document.querySelectorAll('.slider-col').forEach(col => {
           const fixtureId = col.dataset.fixtureId;
           const channelName = col.dataset.channelName;
-          if (data[fixtureId] && data[fixtureId][channelName] !== undefined) {
-            const value = data[fixtureId][channelName];
-            const dmxValue = Math.round(value * 255);
-            const input = col.querySelector('input[type=range]');
-            const output = col.querySelector('output');
-            if (input && output && !input.matches(':active')) {
+          const input = col.querySelector('input[type=range]');
+          const output = col.querySelector('output');
+          if (!input || !output || input.matches(':active')) return;
+
+          if (fixtureId === '_global') {
+            if (channelName === 'grandmaster') {
+              const level = Math.round(gmRes.level * 100);
+              if (parseInt(input.value) !== level) {
+                input.value = level;
+                output.textContent = `${level}%`;
+              }
+            } else if (channelName === 'bpm') {
+              const bpm = bpmRes.bpm;
+              if (parseInt(input.value) !== bpm) {
+                input.value = bpm;
+                output.textContent = bpm.toString();
+              }
+            }
+          } else if (statesRes[fixtureId] && statesRes[fixtureId][channelName] !== undefined) {
+            const dmxValue = Math.round(statesRes[fixtureId][channelName] * 255);
+            if (parseInt(input.value) !== dmxValue) {
               input.value = dmxValue;
               output.textContent = dmxValue.toString();
             }

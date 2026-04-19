@@ -373,6 +373,108 @@ window.addDiscoveredNode = function(node) {
   document.getElementById('node-modal').style.display = 'flex';
 };
 
+// MIDI Device Discovery
+let midiActiveConfig = { active_inputs: [], active_outputs: [] };
+let midiDiscoveredDevices = { inputs: [], outputs: [] };
+
+async function scanMidiDevices() {
+  const btn = document.getElementById('scan-midi-btn');
+  const status = document.getElementById('midi-status');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  status.style.display = 'block';
+  status.textContent = 'Scanning for MIDI devices...';
+
+  try {
+    const [devRes, cfgRes] = await Promise.all([
+      fetch(`${apiBase}/api/midi/devices`),
+      fetch(`${apiBase}/api/midi/config`),
+    ]);
+    const devData = await devRes.json();
+    const cfgData = cfgRes.ok ? await cfgRes.json() : { active_inputs: [], active_outputs: [] };
+
+    btn.disabled = false;
+    btn.textContent = 'Scan MIDI Devices';
+
+    if (devData.error) {
+      status.textContent = 'Scan failed: ' + devData.error;
+      return;
+    }
+
+    midiDiscoveredDevices = devData;
+    midiActiveConfig = cfgData;
+
+    const total = devData.inputs.length + devData.outputs.length;
+    status.textContent = total ? `Found ${total} MIDI port(s).` : 'No MIDI devices found.';
+    renderMidiDevices();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Scan MIDI Devices';
+    status.textContent = 'Scan failed: ' + e.message;
+  }
+}
+
+function renderMidiDevices() {
+  const list = document.getElementById('midi-devices-list');
+  list.innerHTML = '';
+
+  const makeRow = (name, direction) => {
+    const dir = direction === 'input' ? 'IN' : 'OUT';
+    const isActive = direction === 'input'
+      ? midiActiveConfig.active_inputs.includes(name)
+      : midiActiveConfig.active_outputs.includes(name);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'border: 1px solid #374151; padding: 10px; margin-bottom: 8px; border-radius: 8px; background: #111827; display: flex; align-items: center; justify-content: space-between; gap: 10px;';
+
+    const activeBadge = isActive
+      ? '<span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: #065f46; color: #6ee7b7; margin-left: 8px;">Active</span>'
+      : '';
+
+    row.innerHTML = `
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+          ${name}${activeBadge}
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <span style="padding: 2px 8px; border-radius: 999px; font-size: 10px; background: ${dir === 'IN' ? '#1e3a5f' : '#3b1f5e'}; color: ${dir === 'IN' ? '#93c5fd' : '#c4b5fd'};">${dir}</span>
+        <button class="secondary" style="padding: 4px 10px; font-size: 12px;" data-midi-name="${name}" data-midi-dir="${direction}" data-midi-active="${isActive}">
+          ${isActive ? 'Deactivate' : 'Activate'}
+        </button>
+      </div>
+    `;
+
+    row.querySelector('button').addEventListener('click', toggleMidiDevice);
+    return row;
+  };
+
+  midiDiscoveredDevices.inputs.forEach(name => list.appendChild(makeRow(name, 'input')));
+  midiDiscoveredDevices.outputs.forEach(name => list.appendChild(makeRow(name, 'output')));
+}
+
+async function toggleMidiDevice(e) {
+  const btn = e.currentTarget;
+  const name = btn.dataset.midiName;
+  const direction = btn.dataset.midiDir;
+  const isActive = btn.dataset.midiActive === 'true';
+  const endpoint = isActive ? '/api/midi/deactivate' : '/api/midi/activate';
+
+  btn.disabled = true;
+  try {
+    const res = await post(`${apiBase}${endpoint}`, { name, direction });
+    if (res) {
+      midiActiveConfig = res;
+      renderMidiDevices();
+    }
+  } catch (e) {
+    showToast('MIDI toggle failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // Event listeners
 let eventListenersInitialized = false;
 
@@ -384,6 +486,11 @@ function initConfigEventListeners() {
   const scanBtn = document.getElementById('scan-network-btn');
   if (scanBtn) {
     scanBtn.addEventListener('click', scanForNodes);
+  }
+
+  const scanMidiBtn = document.getElementById('scan-midi-btn');
+  if (scanMidiBtn) {
+    scanMidiBtn.addEventListener('click', scanMidiDevices);
   }
 
   const addNodeBtn = document.getElementById('add-node-btn');

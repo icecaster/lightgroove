@@ -17,13 +17,14 @@ from typing import Any, Dict, Optional
 class HttpApiServer:
     """Threaded HTTP server exposing a JSON API and serving the generated UI."""
 
-    def __init__(self, fixture_manager, ui_dir: Path, host: str = "0.0.0.0", port: int = 5000, color_fx=None, move_fx=None):
+    def __init__(self, fixture_manager, ui_dir: Path, host: str = "0.0.0.0", port: int = 5000, color_fx=None, move_fx=None, midi_mgr=None):
         self.fixture_manager = fixture_manager
         self.ui_dir = ui_dir
         self.host = host
         self.port = port
         self.color_fx = color_fx
         self.move_fx = move_fx
+        self.midi_mgr = midi_mgr
         self._server = None
         self._thread = None
         self._flash_saved_states = None  # Store states before flash
@@ -48,6 +49,7 @@ class HttpApiServer:
         ui_dir = self.ui_dir
         color_fx = self.color_fx
         move_fx = self.move_fx
+        midi_mgr = self.midi_mgr
 
         class Handler(BaseHTTPRequestHandler):
             def _set_headers(self, status: int = 200, content_type: str = "application/json"):
@@ -170,6 +172,37 @@ class HttpApiServer:
                     except Exception as e:
                         self._set_headers(500)
                         self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+                    return
+
+                if self.path.startswith("/api/midi/devices"):
+                    try:
+                        import mido
+                        inputs = mido.get_input_names()
+                        outputs = mido.get_output_names()
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"inputs": inputs, "outputs": outputs}).encode("utf-8"))
+                    except ImportError:
+                        self._set_headers(503)
+                        self.wfile.write(json.dumps({"error": "mido not installed"}).encode("utf-8"))
+                    except Exception as e:
+                        self._set_headers(500)
+                        self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+                    return
+
+                if self.path.startswith("/api/midi/config") and midi_mgr:
+                    self._set_headers()
+                    self.wfile.write(json.dumps(midi_mgr.get_config()).encode("utf-8"))
+                    return
+
+                if self.path.startswith("/api/midi/last_event") and midi_mgr:
+                    self._set_headers()
+                    event = midi_mgr.pop_last_event()
+                    self.wfile.write(json.dumps(event or {}).encode("utf-8"))
+                    return
+
+                if self.path.startswith("/api/midi/mappings") and midi_mgr:
+                    self._set_headers()
+                    self.wfile.write(json.dumps(midi_mgr.get_mappings()).encode("utf-8"))
                     return
 
                 if self.path.startswith("/api/config/artnet"):
@@ -476,6 +509,52 @@ class HttpApiServer:
                             self.server._flash_saved_states = None
                         self._set_headers()
                         self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+                        return
+
+                    if path == "/api/midi/map" and midi_mgr:
+                        midi_channel = int(payload.get("midi_channel", 0))
+                        cc = int(payload.get("cc", 0))
+                        fixture_id = payload.get("fixture_id", "")
+                        channel_name = payload.get("channel_name", "")
+                        if not fixture_id or not channel_name:
+                            self._set_headers(400)
+                            self.wfile.write(json.dumps({"error": "fixture_id and channel_name required"}).encode("utf-8"))
+                            return
+                        midi_mgr.add_mapping(midi_channel, cc, fixture_id, channel_name)
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+                        return
+
+                    if path == "/api/midi/unmap" and midi_mgr:
+                        fixture_id = payload.get("fixture_id", "")
+                        channel_name = payload.get("channel_name", "")
+                        midi_mgr.remove_mapping(fixture_id, channel_name)
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+                        return
+
+                    if path == "/api/midi/activate" and midi_mgr:
+                        name = payload.get("name", "")
+                        direction = payload.get("direction", "")
+                        if not name or direction not in ("input", "output"):
+                            self._set_headers(400)
+                            self.wfile.write(json.dumps({"error": "name and direction required"}).encode("utf-8"))
+                            return
+                        midi_mgr.activate(name, direction)
+                        self._set_headers()
+                        self.wfile.write(json.dumps(midi_mgr.get_config()).encode("utf-8"))
+                        return
+
+                    if path == "/api/midi/deactivate" and midi_mgr:
+                        name = payload.get("name", "")
+                        direction = payload.get("direction", "")
+                        if not name or direction not in ("input", "output"):
+                            self._set_headers(400)
+                            self.wfile.write(json.dumps({"error": "name and direction required"}).encode("utf-8"))
+                            return
+                        midi_mgr.deactivate(name, direction)
+                        self._set_headers()
+                        self.wfile.write(json.dumps(midi_mgr.get_config()).encode("utf-8"))
                         return
 
                     if path == "/api/restart":
