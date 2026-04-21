@@ -10,13 +10,22 @@ def generate_ui(fixture_manager, output_dir: Path, api_base: str = "") -> Path:
 
     template_dir = Path(__file__).parent / "templates"
     base_template_path = template_dir / "base.html"
-    
+
     if not base_template_path.exists():
         raise FileNotFoundError(f"Base template missing: {base_template_path}")
 
+    # Copy static assets
+    (output_dir / "styles.css").write_text(
+        _load_template(template_dir / "styles.css"), encoding="utf-8"
+    )
+    (output_dir / "script.js").write_text(
+        _load_template(template_dir / "script.js").replace("__API_BASE__", api_base or ""),
+        encoding="utf-8",
+    )
+
     # Load base template
     base_template = base_template_path.read_text(encoding="utf-8")
-    
+
     # Load section templates
     globals_section = _load_template(template_dir / "section_globals.html")
     tab_globals = _load_template(template_dir / "tab_globals.html")

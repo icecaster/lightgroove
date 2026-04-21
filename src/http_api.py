@@ -535,6 +535,19 @@ class HttpApiServer:
                         self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
                         return
                     
+                    if path == "/api/flash/color":
+                        r = float(payload.get("r", 0))
+                        g = float(payload.get("g", 0))
+                        b = float(payload.get("b", 0))
+                        w = float(payload.get("w", 0))
+                        if color_fx:
+                            color_fx.flash_active = True
+                        self.server._flash_saved_states = fixture_manager.save_current_states()
+                        fixture_manager.flash_all_color(r, g, b, w)
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
+                        return
+
                     if path == "/api/flash/off":
                         # Resume color FX engine
                         if color_fx:

@@ -50,7 +50,10 @@ function channelTypeSummary(channels) {
   const counts = {};
   channels.forEach(ch => { counts[ch.type] = (counts[ch.type] || 0) + 1; });
   return Object.entries(counts)
-    .map(([t, n]) => `<span style="padding:2px 7px;border-radius:999px;font-size:11px;background:${FX_CH_COLORS[t] || '#6b7280'}22;border:1px solid ${FX_CH_COLORS[t] || '#6b7280'}55;color:#cbd5e1;">${n}× ${t}</span>`)
+    .map(([t, n]) => {
+      const col = FX_CH_COLORS[t] || '#6b7280';
+      return `<span class="ch-badge" style="background:${col}22;border:1px solid ${col}55;">${n}× ${t}</span>`;
+    })
     .join(' ');
 }
 
@@ -75,23 +78,24 @@ function renderFixtureTypes() {
     const accent   = isMoving ? '#7c3aed' : '#1e40af';
 
     const row = document.createElement('div');
-    row.style.cssText = `border:1px solid #374151;background:#111827;border-left:3px solid ${accent};padding:12px 14px;margin-bottom:10px;border-radius:6px;display:flex;align-items:center;gap:12px;`;
+    row.className = 'list-card list-card--row';
+    row.style.borderLeft = `3px solid ${accent}`;
     row.innerHTML = `
-      <div style="flex:1;min-width:0;">
+      <div class="list-card__body">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
           <span style="font-weight:600;font-size:14px;">${def.name}</span>
-          <code style="font-size:11px;padding:2px 7px;background:#0f172a;border:1px solid #374151;border-radius:4px;color:#9ca3af;">${key}</code>
-          ${def.manufacturer ? `<span style="font-size:12px;color:#6b7280;">${def.manufacturer}</span>` : ''}
+          <code style="font-size:11px;padding:2px 7px;background:#0f172a;border:1px solid var(--border);border-radius:4px;color:var(--muted);">${key}</code>
+          ${def.manufacturer ? `<span class="list-card__meta" style="font-size:12px;">${def.manufacturer}</span>` : ''}
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;">
           ${channelTypeSummary(channels)}
-          ${hasCw ? '<span style="padding:2px 7px;border-radius:999px;font-size:11px;background:#7c3aed22;border:1px solid #7c3aed55;color:#cbd5e1;">colour wheel</span>' : ''}
-          ${def.dimmer_on_black ? '<span style="padding:2px 7px;border-radius:999px;font-size:11px;background:#f59e0b22;border:1px solid #f59e0b55;color:#cbd5e1;">dimmer on black</span>' : ''}
+          ${hasCw ? '<span class="ch-badge" style="background:#7c3aed22;border:1px solid #7c3aed55;">colour wheel</span>' : ''}
+          ${def.dimmer_on_black ? '<span class="ch-badge" style="background:#f59e0b22;border:1px solid #f59e0b55;">dimmer on black</span>' : ''}
         </div>
       </div>
-      <div style="display:flex;gap:5px;flex-shrink:0;">
-        <button class="secondary" style="padding:5px 10px;font-size:12px;" onclick="editFixtureType('${key}')">Edit</button>
-        <button class="secondary" style="padding:5px 10px;font-size:12px;background:#7f1d1d;border-color:#991b1b;" onclick="deleteFixtureType('${key}')">Delete</button>
+      <div class="list-card__actions">
+        <button class="secondary btn-sm" onclick="editFixtureType('${key}')">Edit</button>
+        <button class="btn--delete btn-sm" onclick="deleteFixtureType('${key}')">Delete</button>
       </div>
     `;
     container.appendChild(row);
@@ -114,20 +118,17 @@ function renderModalChannels() {
 
   fxEditorChannels.forEach((ch, i) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:grid;grid-template-columns:40px 1fr 160px 36px;gap:6px;align-items:center;';
+    row.className = 'ch-row';
     row.innerHTML = `
-      <div style="text-align:center;font-size:12px;color:#9ca3af;font-weight:600;">ch${i + 1}</div>
+      <div class="ch-row__num">ch${i + 1}</div>
       <input type="text" value="${ch.name}" placeholder="channel name"
-        style="padding:6px 8px;border-radius:4px;border:1px solid #374151;background:#0f172a;color:white;font-size:13px;"
-        onchange="fxChSetName(${i}, this.value)">
-      <select style="padding:6px 8px;border-radius:4px;border:1px solid #374151;background:#0f172a;color:white;font-size:13px;"
-        onchange="fxChSetType(${i}, this.value)">
+        class="form-input" onchange="fxChSetName(${i}, this.value)">
+      <select class="form-input" onchange="fxChSetType(${i}, this.value)">
         ${FX_CHANNEL_TYPES.map(t =>
           `<option value="${t}" ${ch.type === t ? 'selected' : ''}>${t}</option>`
         ).join('')}
       </select>
-      <button class="secondary" style="padding:5px;font-size:13px;background:#7f1d1d;border-color:#991b1b;width:36px;"
-        onclick="fxChRemove(${i})">✕</button>
+      <button class="btn--delete" style="padding:5px;width:36px;" onclick="fxChRemove(${i})">✕</button>
     `;
     list.appendChild(row);
   });
@@ -151,16 +152,13 @@ function renderCwMapping() {
 
   Object.entries(fxEditorCwMapping).forEach(([colorName, dmxVal]) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 100px 36px;gap:6px;align-items:center;';
+    row.className = 'cw-row';
     row.innerHTML = `
       <input type="text" value="${colorName}" placeholder="colour name"
-        style="padding:6px 8px;border-radius:4px;border:1px solid #374151;background:#0f172a;color:white;font-size:13px;"
-        data-cw-key="${colorName}" onchange="fxCwRenameKey('${colorName}', this.value)">
+        class="form-input" data-cw-key="${colorName}" onchange="fxCwRenameKey('${colorName}', this.value)">
       <input type="number" value="${dmxVal}" min="0" max="255" placeholder="DMX"
-        style="padding:6px 8px;border-radius:4px;border:1px solid #374151;background:#0f172a;color:white;font-size:13px;"
-        onchange="fxCwSetVal('${colorName}', parseInt(this.value))">
-      <button class="secondary" style="padding:5px;font-size:13px;background:#7f1d1d;border-color:#991b1b;width:36px;"
-        onclick="fxCwRemove('${colorName}')">✕</button>
+        class="form-input" onchange="fxCwSetVal('${colorName}', parseInt(this.value))">
+      <button class="btn--delete" style="padding:5px;width:36px;" onclick="fxCwRemove('${colorName}')">✕</button>
     `;
     list.appendChild(row);
   });

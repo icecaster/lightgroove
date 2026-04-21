@@ -246,6 +246,15 @@
           0,
           255
         ]
+      },
+      {
+        "index": 1,
+        "name": "direction",
+        "type": "other",
+        "range": [
+          0,
+          255
+        ]
       }
     ],
     "manufacturer": "DiscoDriver"

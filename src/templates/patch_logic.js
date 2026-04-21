@@ -88,7 +88,7 @@ function renderPatch() {
   let totalFixtures = 0;
 
   if (universeKeys.length === 0) {
-    container.innerHTML = '<div style="color: #6b7280; font-size: 14px; padding: 20px 0;">No fixtures patched yet. Click "+ Add Fixture" to get started.</div>';
+    container.innerHTML = '<div class="empty-msg">No fixtures patched yet. Click "+ Add Fixture" to get started.</div>';
     if (summaryEl) summaryEl.textContent = '0 fixtures';
     return;
   }
@@ -100,18 +100,16 @@ function renderPatch() {
     const overlaps = findOverlaps(fixtures);
 
     const section = document.createElement('div');
-    section.style.cssText = 'margin-bottom: 28px;';
+    section.className = 'universe-section';
 
     const overlapBanner = overlaps.size > 0
-      ? `<div style="background:#451a03;border:1px solid #92400e;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#fcd34d;">
-           ⚠ DMX address overlap detected — highlighted fixtures share channels
-         </div>`
+      ? '<div class="overlap-banner">⚠ DMX address overlap detected — highlighted fixtures share channels</div>'
       : '';
 
     section.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <h3 style="margin:0;font-size:15px;color:#f8fafc;">Universe ${uid}</h3>
-        <span style="font-size:12px;color:#9ca3af;">${fixtures.length} fixture${fixtures.length !== 1 ? 's' : ''}</span>
+      <div class="universe-header">
+        <h3 class="universe-header__title">Universe ${uid}</h3>
+        <span class="universe-header__count">${fixtures.length} fixture${fixtures.length !== 1 ? 's' : ''}</span>
       </div>
       ${overlapBanner}
       <div id="u${uid}-list"></div>
@@ -127,31 +125,22 @@ function renderPatch() {
       const accent   = isMovingHead(fx.type) ? '#7c3aed' : '#1e40af';
 
       const row = document.createElement('div');
-      row.style.cssText = [
-        `border:1px solid ${hasOvlp ? '#92400e' : '#374151'}`,
-        `background:${hasOvlp ? '#1c0e03' : '#111827'}`,
-        `border-left:3px solid ${accent}`,
-        'padding:10px 12px',
-        'margin-bottom:8px',
-        'border-radius:6px',
-        'display:flex',
-        'align-items:center',
-        'gap:12px',
-      ].join(';');
+      row.className = `list-card list-card--row${hasOvlp ? ' list-card--overlap' : ''}`;
+      row.style.borderLeft = `3px solid ${accent}`;
 
       row.innerHTML = `
-        <div style="flex:1;min-width:0;">
+        <div class="list-card__body">
           <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
             <span style="font-weight:600;font-size:14px;">${fx.id}</span>
-            <span style="padding:2px 8px;border-radius:999px;background:${accent}22;border:1px solid ${accent}55;font-size:11px;color:#cbd5e1;">${typeName}</span>
-            <span style="padding:2px 8px;border-radius:999px;background:#1f2937;border:1px solid #374151;font-size:11px;color:#9ca3af;">ch ${fx.start_address}–${eAddr}</span>
-            ${typeDef ? `<span style="padding:2px 8px;border-radius:999px;background:#1f2937;border:1px solid #374151;font-size:11px;color:#9ca3af;">${typeDef.channels.length} ch</span>` : ''}
+            <span class="ch-badge" style="background:${accent}22;border:1px solid ${accent}55;">${typeName}</span>
+            <span class="ch-badge" style="background:#1f2937;border:1px solid #374151;color:#9ca3af;">ch ${fx.start_address}–${eAddr}</span>
+            ${typeDef ? `<span class="ch-badge" style="background:#1f2937;border:1px solid #374151;color:#9ca3af;">${typeDef.channels.length} ch</span>` : ''}
           </div>
-          ${fx.description ? `<div style="font-size:12px;color:#6b7280;margin-top:3px;">${fx.description}</div>` : ''}
+          ${fx.description ? `<div class="list-card__meta" style="margin-top:3px;">${fx.description}</div>` : ''}
         </div>
-        <div style="display:flex;gap:5px;flex-shrink:0;">
-          <button class="secondary" style="padding:5px 10px;font-size:12px;" onclick="editFixture('${uid}','${fx.id}')">Edit</button>
-          <button class="secondary" style="padding:5px 10px;font-size:12px;background:#7f1d1d;border-color:#991b1b;" onclick="deleteFixture('${uid}','${fx.id}')">Delete</button>
+        <div class="list-card__actions">
+          <button class="secondary btn-sm" onclick="editFixture('${uid}','${fx.id}')">Edit</button>
+          <button class="btn--delete btn-sm" onclick="deleteFixture('${uid}','${fx.id}')">Delete</button>
         </div>
       `;
       list.appendChild(row);
@@ -198,7 +187,9 @@ function updateChannelPreview() {
   fixtureTypes[typeKey].channels.forEach(ch => {
     const col  = CH_COLORS[ch.type] || '#6b7280';
     const pill = document.createElement('span');
-    pill.style.cssText = `display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;border:1px solid ${col}55;background:${col}22;color:#e2e8f0;`;
+    pill.className = 'ch-pill';
+    pill.style.border = `1px solid ${col}55`;
+    pill.style.background = `${col}22`;
     pill.textContent = `${ch.index + 1}: ${ch.name}`;
     list.appendChild(pill);
   });
