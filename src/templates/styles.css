@@ -658,3 +658,62 @@ select:focus, input[type=text]:focus, input[type=number]:focus {
 .ch-row      { display: grid; grid-template-columns: 40px 1fr 160px 36px; gap: 6px; align-items: center; }
 .ch-row__num { text-align: center; font-size: 12px; color: var(--muted); font-weight: 600; }
 .cw-row      { display: grid; grid-template-columns: 1fr 100px 36px; gap: 6px; align-items: center; }
+
+/* ── Scene grid ────────────────────────────────────────────────── */
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.scene-btn {
+  position: relative;
+  padding: 16px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--ink-100);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.12s var(--ease-out);
+  text-align: left;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.scene-btn:hover { background: var(--ink-200); border-color: var(--ink-400); }
+.scene-btn.active {
+  border-color: var(--accent-500);
+  box-shadow: var(--glow-sm);
+}
+.scene-btn__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scene-btn__meta {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.scene-btn__actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  gap: 2px;
+}
+.scene-btn:hover .scene-btn__actions { display: flex; }
+.scene-btn__action {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: 14px;
+  padding: 2px 4px;
+  cursor: pointer;
+  height: auto;
+  min-height: 0;
+  border-radius: 2px;
+}
+.scene-btn__action:hover { color: var(--text); background: var(--ink-300); }

@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 class HttpApiServer:
     """Threaded HTTP server exposing a JSON API and serving the generated UI."""
 
-    def __init__(self, fixture_manager, ui_dir: Path, host: str = "0.0.0.0", port: int = 5000, color_fx=None, move_fx=None, midi_mgr=None):
+    def __init__(self, fixture_manager, ui_dir: Path, host: str = "0.0.0.0", port: int = 5000, color_fx=None, move_fx=None, midi_mgr=None, scene_mgr=None):
         self.fixture_manager = fixture_manager
         self.ui_dir = ui_dir
         self.host = host
@@ -25,6 +25,7 @@ class HttpApiServer:
         self.color_fx = color_fx
         self.move_fx = move_fx
         self.midi_mgr = midi_mgr
+        self.scene_mgr = scene_mgr
         self._server = None
         self._thread = None
         self._flash_saved_states = None  # Store states before flash
@@ -50,6 +51,7 @@ class HttpApiServer:
         color_fx = self.color_fx
         move_fx = self.move_fx
         midi_mgr = self.midi_mgr
+        scene_mgr = self.scene_mgr
 
         class Handler(BaseHTTPRequestHandler):
             def _set_headers(self, status: int = 200, content_type: str = "application/json"):
@@ -137,6 +139,11 @@ class HttpApiServer:
                         "move_speed_multiplier": move_fx.move_speed_multiplier
                     }
                     self.wfile.write(json.dumps(state).encode("utf-8"))
+                    return
+
+                if self.path.startswith("/api/scenes") and scene_mgr:
+                    self._set_headers()
+                    self.wfile.write(json.dumps({"scenes": scene_mgr.list_scenes()}).encode("utf-8"))
                     return
 
                 if self.path.startswith("/api/config/fixtures"):
@@ -620,6 +627,61 @@ class HttpApiServer:
                         midi_mgr.deactivate(name, direction)
                         self._set_headers()
                         self.wfile.write(json.dumps(midi_mgr.get_config()).encode("utf-8"))
+                        return
+
+                    if path == "/api/scenes" and scene_mgr:
+                        name = payload.get("name", "Untitled")
+                        fixture_ids = payload.get("fixture_ids", None)
+                        scene = scene_mgr.create_scene(
+                            name=name,
+                            fixture_ids=fixture_ids,
+                            include_color_cycle=payload.get("include_color_cycle", False),
+                            include_color_fx=payload.get("include_color_fx", False),
+                            include_move_fx=payload.get("include_move_fx", False),
+                            include_grandmaster=payload.get("include_grandmaster", False),
+                        )
+                        self._set_headers()
+                        self.wfile.write(json.dumps(scene).encode("utf-8"))
+                        return
+
+                    if path.startswith("/api/scenes/") and path.endswith("/activate") and scene_mgr:
+                        scene_id = path.split("/")[3]
+                        ok = scene_mgr.activate_scene(scene_id)
+                        self._set_headers(200 if ok else 404)
+                        self.wfile.write(json.dumps({"success": ok}).encode("utf-8"))
+                        return
+
+                    if path.startswith("/api/scenes/") and path.endswith("/update") and scene_mgr:
+                        scene_id = path.split("/")[3]
+                        updated = scene_mgr.update_scene(
+                            scene_id,
+                            name=payload.get("name"),
+                            fixture_ids=payload.get("fixture_ids", None),
+                            include_color_cycle=payload.get("include_color_cycle", False),
+                            include_color_fx=payload.get("include_color_fx", False),
+                            include_move_fx=payload.get("include_move_fx", False),
+                            include_grandmaster=payload.get("include_grandmaster", False),
+                        )
+                        if updated:
+                            self._set_headers()
+                            self.wfile.write(json.dumps(updated).encode("utf-8"))
+                        else:
+                            self._set_headers(404)
+                            self.wfile.write(json.dumps({"error": "not found"}).encode("utf-8"))
+                        return
+
+                    if path.startswith("/api/scenes/") and path.endswith("/delete") and scene_mgr:
+                        scene_id = path.split("/")[3]
+                        ok = scene_mgr.delete_scene(scene_id)
+                        self._set_headers(200 if ok else 404)
+                        self.wfile.write(json.dumps({"success": ok}).encode("utf-8"))
+                        return
+
+                    if path == "/api/scenes/reorder" and scene_mgr:
+                        ids = payload.get("scene_ids", [])
+                        scene_mgr.reorder_scenes(ids)
+                        self._set_headers()
+                        self.wfile.write(json.dumps({"success": True}).encode("utf-8"))
                         return
 
                     if path == "/api/restart":

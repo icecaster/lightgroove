@@ -815,3 +815,141 @@ loadBPM();
 loadMoveState();
 setInterval(updateLiveValues, 500);
 setInterval(updateActiveColor, 500);
+
+// ── Scenes ────────────────────────────────────────────────────────
+let scenes = [];
+let activeSceneId = null;
+let deleteSceneId = null;
+
+async function loadScenes() {
+  try {
+    const res = await fetch(`${apiBase}/api/scenes`);
+    const data = await res.json();
+    scenes = data.scenes || [];
+    renderScenes();
+  } catch (e) {
+    console.error('Failed to load scenes:', e);
+  }
+}
+
+function renderScenes() {
+  const grid = document.getElementById('scenes-grid');
+  const empty = document.getElementById('scenes-empty');
+  if (!grid) return;
+
+  grid.querySelectorAll('.scene-btn').forEach(el => el.remove());
+
+  if (scenes.length === 0) {
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  scenes.forEach(scene => {
+    const btn = document.createElement('button');
+    btn.className = 'scene-btn' + (scene.id === activeSceneId ? ' active' : '');
+    btn.dataset.sceneId = scene.id;
+
+    const fixtureCount = Object.keys(scene.fixtures || {}).length;
+    const parts = [];
+    if (fixtureCount > 0) parts.push(`${fixtureCount} fix`);
+    if (scene.color_fx) parts.push('color fx');
+    if (scene.move_fx) parts.push('move fx');
+    if (scene.color_cycle) parts.push('cycle');
+    if (scene.grandmaster !== null && scene.grandmaster !== undefined) parts.push('gm');
+
+    btn.innerHTML = `
+      <span class="scene-btn__name">${scene.name}</span>
+      <span class="scene-btn__meta">${parts.join(' / ') || 'empty'}</span>
+      <span class="scene-btn__actions">
+        <button class="scene-btn__action scene-action-delete" title="Delete">&times;</button>
+      </span>
+    `;
+
+    btn.addEventListener('click', async (e) => {
+      if (e.target.closest('.scene-btn__action')) return;
+      activeSceneId = scene.id;
+      await post(`${apiBase}/api/scenes/${scene.id}/activate`);
+      renderScenes();
+    });
+
+    btn.querySelector('.scene-action-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSceneId = scene.id;
+      document.getElementById('scene-delete-msg').textContent = `Delete scene "${scene.name}"?`;
+      document.getElementById('scene-delete-modal').style.display = 'flex';
+    });
+
+    grid.appendChild(btn);
+  });
+}
+
+// Save scene modal
+document.getElementById('scene-save-btn')?.addEventListener('click', async () => {
+  // Populate fixture checkboxes
+  const container = document.getElementById('scene-fixture-checkboxes');
+  container.innerHTML = '';
+  try {
+    const res = await fetch(`${apiBase}/api/fixtures`);
+    const data = await res.json();
+    (data.fixtures || []).forEach(fx => {
+      const label = document.createElement('label');
+      label.className = 'check-row';
+      label.innerHTML = `<input type="checkbox" class="form-checkbox scene-fixture-cb" value="${fx.id}" checked> ${fx.id} <span class="pill">${fx.type}</span>`;
+      container.appendChild(label);
+    });
+  } catch (e) {}
+
+  document.getElementById('scene-name-input').value = '';
+  document.getElementById('scene-inc-color-cycle').checked = false;
+  document.getElementById('scene-inc-color-fx').checked = false;
+  document.getElementById('scene-inc-move-fx').checked = false;
+  document.getElementById('scene-inc-grandmaster').checked = false;
+  document.getElementById('scene-save-modal').style.display = 'flex';
+  document.getElementById('scene-name-input').focus();
+});
+
+document.getElementById('scene-save-confirm')?.addEventListener('click', async () => {
+  const name = document.getElementById('scene-name-input').value.trim();
+  if (!name) {
+    showToast('Scene name is required', 'warning');
+    return;
+  }
+
+  const fixtureIds = Array.from(document.querySelectorAll('.scene-fixture-cb:checked')).map(cb => cb.value);
+
+  await post(`${apiBase}/api/scenes`, {
+    name,
+    fixture_ids: fixtureIds,
+    include_color_cycle: document.getElementById('scene-inc-color-cycle').checked,
+    include_color_fx: document.getElementById('scene-inc-color-fx').checked,
+    include_move_fx: document.getElementById('scene-inc-move-fx').checked,
+    include_grandmaster: document.getElementById('scene-inc-grandmaster').checked,
+  });
+
+  document.getElementById('scene-save-modal').style.display = 'none';
+  showToast(`Scene "${name}" saved`, 'success');
+  loadScenes();
+});
+
+document.getElementById('scene-save-cancel')?.addEventListener('click', () => {
+  document.getElementById('scene-save-modal').style.display = 'none';
+});
+
+// Delete scene modal
+document.getElementById('scene-delete-confirm')?.addEventListener('click', async () => {
+  if (deleteSceneId) {
+    await post(`${apiBase}/api/scenes/${deleteSceneId}/delete`);
+    if (activeSceneId === deleteSceneId) activeSceneId = null;
+    deleteSceneId = null;
+  }
+  document.getElementById('scene-delete-modal').style.display = 'none';
+  loadScenes();
+});
+
+document.getElementById('scene-delete-cancel')?.addEventListener('click', () => {
+  deleteSceneId = null;
+  document.getElementById('scene-delete-modal').style.display = 'none';
+});
+
+loadScenes();

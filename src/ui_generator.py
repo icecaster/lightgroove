@@ -30,6 +30,7 @@ def generate_ui(fixture_manager, output_dir: Path, api_base: str = "") -> Path:
     globals_section = _load_template(template_dir / "section_globals.html")
     tab_globals = _load_template(template_dir / "tab_globals.html")
     tab_faders = _load_template(template_dir / "tab_faders.html")
+    tab_scenes = _load_template(template_dir / "tab_scenes.html")
     tab_colors = _load_template(template_dir / "tab_colors.html")
     tab_move = _load_template(template_dir / "tab_move.html")
     tab_fixtures = _load_template(template_dir / "tab_fixtures.html")
@@ -47,6 +48,7 @@ def generate_ui(fixture_manager, output_dir: Path, api_base: str = "") -> Path:
         base_template
         .replace("{TAB_GLOBALS}", tab_globals)
         .replace("{TAB_FADERS}", tab_faders)
+        .replace("{TAB_SCENES}", tab_scenes)
         .replace("{TAB_COLORS}", tab_colors)
         .replace("{TAB_MOVE}", tab_move)
         .replace("{TAB_FIXTURES}", tab_fixtures)

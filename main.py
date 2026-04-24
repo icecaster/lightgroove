@@ -20,6 +20,7 @@ from http_api import HttpApiServer
 from color_manager import ColorFXEngine
 from move_manager import MoveFXEngine
 from midi_manager import MidiManager
+from scene_manager import SceneManager
 
 
 def main():
@@ -34,6 +35,7 @@ def main():
     patch_file = base_dir / "config" / "patch.json"
     artnet_file = base_dir / "config" / "artnet.json"
     midi_file = base_dir / "config" / "midi.json"
+    scenes_file = base_dir / "config" / "scenes.json"
     ui_dir = base_dir / "ui_dist"
     http_port = int(os.getenv("LIGHTGROOVE_HTTP_PORT", "5555"))
     
@@ -60,6 +62,9 @@ def main():
         # Move FX Engine
         move_fx = MoveFXEngine(fixture_mgr)
 
+        # Scene Manager
+        scene_mgr = SceneManager(str(scenes_file), fixture_mgr, color_fx=color_fx, move_fx=move_fx)
+
         # MIDI Manager
         midi_mgr = MidiManager(str(midi_file))
         midi_mgr.fixture_manager = fixture_mgr
@@ -76,7 +81,7 @@ def main():
 
         # Generate UI shell and start HTTP UI/API server
         generate_ui(fixture_mgr, ui_dir, api_base="")
-        http = HttpApiServer(fixture_mgr, ui_dir, host="0.0.0.0", port=http_port, color_fx=color_fx, move_fx=move_fx, midi_mgr=midi_mgr)
+        http = HttpApiServer(fixture_mgr, ui_dir, host="0.0.0.0", port=http_port, color_fx=color_fx, move_fx=move_fx, midi_mgr=midi_mgr, scene_mgr=scene_mgr)
         try:
             http.start()
         except OSError as e:
