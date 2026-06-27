@@ -26,8 +26,53 @@ def _decode_artnet_str(raw: bytes) -> str:
         return raw.decode('latin-1').strip()
 
 
+def _discover_artnet_mdns(timeout: float, seen_ips: set) -> list:
+    """Discover ArtNet nodes advertising via mDNS (_artnet._udp)."""
+    try:
+        from zeroconf import Zeroconf, ServiceBrowser
+    except ImportError:
+        return []
+
+    found = []
+
+    class _Listener:
+        def add_service(self, zc, type_, name):
+            info = zc.get_service_info(type_, name)
+            if not info:
+                return
+            for addr_bytes in info.addresses:
+                ip = socket.inet_ntoa(addr_bytes)
+                if ip in seen_ips:
+                    continue
+                seen_ips.add(ip)
+                short = name.replace('.' + type_, '').strip()
+                found.append({
+                    'ip': ip,
+                    'short_name': short,
+                    'long_name': '',
+                    'name': short or ip,
+                    'num_ports': 0,
+                    'universes': [],
+                })
+
+        def remove_service(self, zc, type_, name):
+            pass
+
+        def update_service(self, zc, type_, name):
+            pass
+
+    zc = Zeroconf()
+    try:
+        ServiceBrowser(zc, '_artnet._udp.local.', _Listener())
+        time.sleep(timeout)
+    finally:
+        zc.close()
+
+    return found
+
+
 def discover_artnet_nodes(timeout: float = 2.0) -> list:
-    """Broadcast ArtPoll and collect ArtPollReply packets to find nodes on the network."""
+    """Broadcast ArtPoll and collect ArtPollReply packets, plus mDNS, to find nodes."""
     ARTNET_PORT = 6454
     ARTPOLL_REPLY_OPCODE = 0x2100
 
@@ -40,6 +85,7 @@ def discover_artnet_nodes(timeout: float = 2.0) -> list:
     )
 
     discovered = []
+    seen_ips = set()
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
@@ -53,7 +99,6 @@ def discover_artnet_nodes(timeout: float = 2.0) -> list:
         sock.sendto(artpoll, ('255.255.255.255', ARTNET_PORT))
 
         deadline = time.time() + timeout
-        seen_ips = set()
 
         while time.time() < deadline:
             try:
@@ -90,6 +135,122 @@ def discover_artnet_nodes(timeout: float = 2.0) -> list:
             sock.close()
         except Exception:
             pass
+
+    # Also discover nodes advertising via mDNS (_artnet._udp), passing seen_ips
+    # so nodes already found via ArtPoll are not duplicated.
+    discovered += _discover_artnet_mdns(timeout, seen_ips)
+
+    return discovered
+
+
+def _discover_sacn_mdns(timeout: float, seen_ips: set) -> list:
+    """Discover sACN nodes advertising via mDNS (_e131._udp)."""
+    try:
+        from zeroconf import Zeroconf, ServiceBrowser
+    except ImportError:
+        return []
+
+    found = []
+
+    class _Listener:
+        def add_service(self, zc, type_, name):
+            info = zc.get_service_info(type_, name)
+            if not info:
+                return
+            for addr_bytes in info.addresses:
+                ip = socket.inet_ntoa(addr_bytes)
+                if ip in seen_ips:
+                    continue
+                seen_ips.add(ip)
+                short = name.replace('.' + type_, '').strip()
+                found.append({
+                    'ip': ip,
+                    'name': short or ip,
+                    'universes': [],
+                })
+
+        def remove_service(self, zc, type_, name):
+            pass
+
+        def update_service(self, zc, type_, name):
+            pass
+
+    zc = Zeroconf()
+    try:
+        ServiceBrowser(zc, '_e131._udp.local.', _Listener())
+        time.sleep(timeout)
+    finally:
+        zc.close()
+
+    return found
+
+
+def discover_sacn_nodes(timeout: float = 2.0) -> list:
+    """Listen for E1.31 Universe Discovery multicast packets and mDNS to find sACN nodes."""
+    SACN_PORT = 5568
+    DISCOVERY_ADDR = '239.255.250.214'
+    _ACN_ID = bytes([0x41, 0x53, 0x43, 0x2d, 0x45, 0x31, 0x2e,
+                     0x31, 0x37, 0x00, 0x00, 0x00])
+
+    discovered = []
+    seen_ips = set()
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        except AttributeError:
+            pass
+        sock.settimeout(0.1)
+        sock.bind(('', SACN_PORT))
+        mreq = struct.pack('4s4s', socket.inet_aton(DISCOVERY_ADDR), socket.inet_aton('0.0.0.0'))
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                data, addr = sock.recvfrom(2048)
+                ip = addr[0]
+                if ip in seen_ips or len(data) < 122:
+                    continue
+                # ACN preamble at offset 4
+                if data[4:16] != _ACN_ID:
+                    continue
+                # Root vector at offset 18: VECTOR_ROOT_E131_EXTENDED = 0x00000008
+                if data[18:22] != b'\x00\x00\x00\x08':
+                    continue
+                # Framing vector at offset 40: VECTOR_E131_EXTENDED_DISCOVERY = 0x00000002
+                if data[40:44] != b'\x00\x00\x00\x02':
+                    continue
+                # Source name at offset 44 (64 bytes, null-terminated)
+                raw_name = data[44:108]
+                null = raw_name.find(b'\x00')
+                source_name = raw_name[:null if null != -1 else 64].decode('utf-8', errors='replace').strip()
+                # Universe list starts at offset 122 (2 bytes per universe, big-endian)
+                udl_payload = data[122:]
+                universes = [
+                    struct.unpack_from('>H', udl_payload, i)[0]
+                    for i in range(0, len(udl_payload) - 1, 2)
+                ]
+                seen_ips.add(ip)
+                discovered.append({
+                    'ip': ip,
+                    'name': source_name or ip,
+                    'universes': universes,
+                })
+            except socket.timeout:
+                continue
+    except Exception as e:
+        print(f"sACN discovery error: {e}")
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+    # Also discover via mDNS (_e131._udp), deduplicating against ArtPoll results.
+    discovered += _discover_sacn_mdns(timeout, seen_ips)
 
     return discovered
 
