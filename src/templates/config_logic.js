@@ -1,5 +1,17 @@
 // Config Tab Logic
 let artnetConfig = null;
+
+function outputModeLabel(mode) {
+  if (mode === 'artnet') return 'ArtNet';
+  if (mode === 'sacn') return 'sACN';
+  if (mode === 'serial') return 'Serial';
+  if (mode === 'virtual') return 'Virtual';
+  return mode;
+}
+
+function universeFieldLabel(mode) {
+  return mode === 'sacn' ? 'sACN Universe' : 'ArtNet Universe';
+}
 let colorsConfig = null;
 
 async function loadArtNetConfig() {
@@ -98,9 +110,9 @@ function renderMappings() {
           <div class="list-card__name">DMX Universe ${dmxUniverse}</div>
           <div class="list-card__meta">
             <div>Node: ${mapping.node_id}</div>
-            <div>ArtNet Universe: ${mapping.artnet_universe}</div>
+            <div>${universeFieldLabel(mapping.output_mode)}: ${mapping.artnet_universe}</div>
             <div class="badge-row">
-              <span class="badge ${mapping.output_mode === 'artnet' ? 'badge--info' : mapping.output_mode === 'sacn' ? 'badge--purple' : 'badge--neutral'}">${mapping.output_mode === 'sacn' ? 'sACN' : mapping.output_mode}</span>
+              <span class="badge ${mapping.output_mode === 'artnet' ? 'badge--info' : mapping.output_mode === 'sacn' ? 'badge--purple' : 'badge--neutral'}">${outputModeLabel(mapping.output_mode)}</span>
             </div>
           </div>
         </div>
