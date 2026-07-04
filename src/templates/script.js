@@ -79,6 +79,96 @@ async function getStates() {
   return await res.json();
 }
 
+// ── Touch fader engine ────────────────────────────────────────────
+// Replaces native vertical range inputs with a pointer-driven fader:
+// relative drag (no jump-to-tap) so a touch never yanks a live level,
+// and sliding the finger sideways off the track engages fine mode
+// (0.15x) for single-DMX-step accuracy. The original <input> stays in
+// the DOM (hidden) as the state carrier: all existing 'input'
+// listeners, MIDI learn and the live-sync poller work unchanged.
+const FINE_FACTOR = 0.15;
+const allFaders = [];
+
+function initFader(input) {
+  if (input.dataset.faderized) return;
+  input.dataset.faderized = '1';
+
+  const fader = document.createElement('div');
+  fader.className = 'fader';
+  const accent = input.style.accentColor;
+  if (accent) fader.style.setProperty('--fader-accent', accent);
+  fader.innerHTML = `
+    <div class="fader__fill"></div>
+    <div class="fader__thumb"></div>
+    <div class="fader__fine">FINE</div>
+  `;
+  input.parentNode.insertBefore(fader, input);
+
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  const fill = fader.querySelector('.fader__fill');
+  const thumb = fader.querySelector('.fader__thumb');
+
+  fader._input = input;
+  fader._render = () => {
+    const pct = ((Number(input.value) - min) / (max - min)) * 100;
+    fill.style.height = `${pct}%`;
+    thumb.style.bottom = `${pct}%`;
+    fader._lastRendered = input.value;
+  };
+  fader._render();
+  allFaders.push(fader);
+
+  let acc = 0;
+  let lastY = 0;
+
+  fader.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    fader.setPointerCapture(e.pointerId);
+    acc = Number(input.value);
+    lastY = e.clientY;
+    input.dataset.dragging = '1';
+    fader.classList.add('fader--active');
+  });
+
+  fader.addEventListener('pointermove', e => {
+    if (!input.dataset.dragging) return;
+    const rect = fader.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const fine = Math.abs(dx) > rect.width * 1.2;
+    fader.classList.toggle('fader--fine', fine);
+
+    const factor = fine ? FINE_FACTOR : 1;
+    acc += (lastY - e.clientY) * factor * (max - min) / rect.height;
+    lastY = e.clientY;
+    acc = Math.max(min, Math.min(max, acc));
+
+    const v = Math.round(acc);
+    if (v !== Number(input.value)) {
+      input.value = v;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    fader._render();
+  });
+
+  const endDrag = () => {
+    delete input.dataset.dragging;
+    fader.classList.remove('fader--active', 'fader--fine');
+  };
+  fader.addEventListener('pointerup', endDrag);
+  fader.addEventListener('pointercancel', endDrag);
+}
+
+// Keep fader visuals in sync with programmatic input.value writes
+// (live-sync poller, blackout, scene recall, zeroAllSliders, ...).
+function syncFaderVisuals() {
+  for (const f of allFaders) {
+    if (!f._input.dataset.dragging && f._lastRendered !== f._input.value) f._render();
+  }
+  requestAnimationFrame(syncFaderVisuals);
+}
+requestAnimationFrame(syncFaderVisuals);
+
 function makeSlider(fixtureId, channelName, label, value, color, onChange) {
   const col = document.createElement('div');
   col.className = 'slider-col';
@@ -104,6 +194,7 @@ function makeSlider(fixtureId, channelName, label, value, color, onChange) {
   col.appendChild(lab);
   col.appendChild(input);
   col.appendChild(out);
+  initFader(input);
   return col;
 }
 
@@ -121,7 +212,7 @@ function renderFixtures(fixtures) {
     h3.innerHTML = `${fx.id} <span class="pill">${fx.type}</span> <span class="pill">U${fx.universe} @ ${fx.start_address}</span>`;
     card.appendChild(h3);
 
-    const channels = fx.channels || [];
+    const channels = (fx.channels || []).filter(ch => !ch.disabled);
     const ordered = [...channels].sort((a, b) => (a.index ?? 0) - (b.index ?? 0) || a.name.localeCompare(b.name));
 
     const slots = document.createElement('div');
@@ -403,7 +494,26 @@ async function loadStaticColors() {
         e.dataTransfer.setData('text/plain', colorName);
       });
 
+      // Long-press adds to the color cycle — drag & drop does not exist on touch
+      let lpTimer = null;
+      btn.addEventListener('pointerdown', () => {
+        lpTimer = setTimeout(() => {
+          lpTimer = null;
+          btn.dataset.longPressed = '1';
+          colorCycle.push(colorName);
+          renderColorCycle();
+          saveColorCycle();
+          showToast(`${colorName} added to color cycle`, 'success');
+          if (navigator.vibrate) navigator.vibrate(30);
+        }, 550);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+        btn.addEventListener(ev, () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } })
+      );
+      btn.addEventListener('contextmenu', e => e.preventDefault());
+
       btn.addEventListener('click', async () => {
+        if (btn.dataset.longPressed) { delete btn.dataset.longPressed; return; }
         await post(`${apiBase}/api/fx/stop`, {});
         document.querySelectorAll('#fx-random-1, #fx-random-2, #fx-random-3, #fx-random-4').forEach(btn => btn.classList.remove('active'));
         await post(`${apiBase}/api/all/color`, color);
@@ -708,7 +818,7 @@ async function updateLiveValues() {
       const channelName = col.dataset.channelName;
       const input = col.querySelector('input[type=range]');
       const output = col.querySelector('output');
-      if (!input || !output || input.matches(':active')) return;
+      if (!input || !output || input.dataset.dragging) return;
 
       if (fixtureId === '_global') {
         if (channelName === 'grandmaster') {
@@ -734,6 +844,8 @@ async function updateLiveValues() {
     });
   } catch (e) {}
 }
+
+document.querySelectorAll('input[type=range]').forEach(initFader);
 
 loadFixtures();
 loadStaticColors().then(() => loadColorCycle());

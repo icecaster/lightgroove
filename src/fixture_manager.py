@@ -84,7 +84,11 @@ class FixtureManager:
         if not channel_config:
             print(f"Channel '{channel_name}' not found in fixture '{fixture_id}'")
             return
-        
+
+        # Disabled channels keep their DMX slot but are never controlled
+        if channel_config.get('disabled'):
+            return
+
         # Scale value from 0.0-1.0 to DMX range
         dmx_value = int(value * 255)
         dmx_value = max(0, min(255, dmx_value))
@@ -141,7 +145,7 @@ class FixtureManager:
         
         for ch in config['channels']:
             if ch['name'] == channel_name:
-                return True
+                return not ch.get('disabled')
         return False
     
     def _rgbw_to_color_wheel(self, fixture_id: str, r: float, g: float, b: float, w: float) -> float:

@@ -48,13 +48,20 @@ async function saveFixtureLibrary() {
 
 function channelTypeSummary(channels) {
   const counts = {};
-  channels.forEach(ch => { counts[ch.type] = (counts[ch.type] || 0) + 1; });
-  return Object.entries(counts)
+  let disabledCount = 0;
+  channels.forEach(ch => {
+    if (ch.disabled) { disabledCount++; return; }
+    counts[ch.type] = (counts[ch.type] || 0) + 1;
+  });
+  const badges = Object.entries(counts)
     .map(([t, n]) => {
       const col = FX_CH_COLORS[t] || '#6b7280';
       return `<span class="ch-badge" style="background:${col}22;border:1px solid ${col}55;">${n}× ${t}</span>`;
-    })
-    .join(' ');
+    });
+  if (disabledCount) {
+    badges.push(`<span class="ch-badge" style="background:#37415122;border:1px solid #37415199;color:#6b7280;">${disabledCount}× disabled</span>`);
+  }
+  return badges.join(' ');
 }
 
 function renderFixtureTypes() {
@@ -118,9 +125,12 @@ function renderModalChannels() {
 
   fxEditorChannels.forEach((ch, i) => {
     const row = document.createElement('div');
-    row.className = 'ch-row';
+    row.className = 'ch-row' + (ch.disabled ? ' ch-row--disabled' : '');
     row.innerHTML = `
       <div class="ch-row__num">ch${i + 1}</div>
+      <input type="checkbox" class="form-checkbox" ${ch.disabled ? '' : 'checked'}
+        title="${ch.disabled ? 'Channel disabled — keeps its DMX slot but is never controlled' : 'Channel enabled'}"
+        onchange="fxChSetEnabled(${i}, this.checked)">
       <input type="text" value="${ch.name}" placeholder="channel name"
         class="form-input" onchange="fxChSetName(${i}, this.value)">
       <select class="form-input" onchange="fxChSetType(${i}, this.value)">
@@ -136,6 +146,10 @@ function renderModalChannels() {
 
 window.fxChSetName = function(i, val) { fxEditorChannels[i].name = val.trim(); };
 window.fxChSetType = function(i, val) { fxEditorChannels[i].type = val; };
+window.fxChSetEnabled = function(i, checked) {
+  fxEditorChannels[i].disabled = !checked;
+  renderModalChannels();
+};
 window.fxChRemove  = function(i) {
   fxEditorChannels.splice(i, 1);
   renderModalChannels();
@@ -200,7 +214,7 @@ function openFixtureTypeModal(typeKey) {
 
   // Channels
   fxEditorChannels = def
-    ? def.channels.map(ch => ({ name: ch.name, type: ch.type }))
+    ? def.channels.map(ch => ({ name: ch.name, type: ch.type, disabled: Boolean(ch.disabled) }))
     : [];
   renderModalChannels();
 
@@ -277,8 +291,8 @@ function validateFixtureTypeModal(originalKey) {
     showToast('Add at least one channel', 'warning'); ok = false;
   }
 
-  // Check all channel names are filled
-  const unnamed = fxEditorChannels.filter(ch => !ch.name);
+  // Check all enabled channel names are filled (disabled slots may stay unnamed)
+  const unnamed = fxEditorChannels.filter(ch => !ch.disabled && !ch.name);
   if (unnamed.length) {
     showToast(`${unnamed.length} channel(s) have no name`, 'warning'); ok = false;
   }
@@ -317,12 +331,16 @@ function initFixtureEditorListeners() {
     const manufacturer = document.getElementById('ftm-manufacturer').value.trim();
     const dimmerOnBlack = document.getElementById('ftm-dimmer-on-black').checked;
 
-    const channels = fxEditorChannels.map((ch, i) => ({
-      index: i,
-      name:  ch.name,
-      type:  ch.type,
-      range: [0, 255],
-    }));
+    const channels = fxEditorChannels.map((ch, i) => {
+      const entry = {
+        index: i,
+        name:  ch.name,
+        type:  ch.type,
+        range: [0, 255],
+      };
+      if (ch.disabled) entry.disabled = true;
+      return entry;
+    });
 
     const def = { name, channels };
     if (manufacturer)  def.manufacturer       = manufacturer;

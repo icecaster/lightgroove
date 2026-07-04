@@ -219,7 +219,8 @@
         "range": [
           0,
           255
-        ]
+        ],
+        "disabled": true
       }
     ],
     "manufacturer": "U-King",
